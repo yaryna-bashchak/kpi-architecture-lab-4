@@ -8,9 +8,9 @@ import (
 	"log"
 	"net/http"
 	"time"
-
-	"github.com/roman-mazur/design-practice-2-template/httptools"
-	"github.com/roman-mazur/design-practice-2-template/signal"
+	"sync"
+	"github.com/yaryna-bashchak/kpi-architecture-lab-4/httptools"
+	"github.com/yaryna-bashchak/kpi-architecture-lab-4/signal"
 )
 
 var (
