@@ -21,13 +21,20 @@ var (
 	traceEnabled = flag.Bool("trace", false, "whether to include tracing information into responses")
 )
 
+type Server struct {
+	URL     string
+	ConnCnt int
+	Healthy bool
+}
+
 var (
 	timeout = time.Duration(*timeoutSec) * time.Second
-	serversPool = []string{
-		"server1:8080",
-		"server2:8080",
-		"server3:8080",
+	serversPool = []*Server{
+		{URL: "server1:8080"},
+		{URL: "server2:8080"},
+		{URL: "server3:8080"},
 	}
+	mutex sync.Mutex
 )
 
 func scheme() string {
@@ -37,10 +44,10 @@ func scheme() string {
 	return "http"
 }
 
-func health(dst string) bool {
+func Health(server *Server) bool {
 	ctx, _ := context.WithTimeout(context.Background(), timeout)
 	req, _ := http.NewRequestWithContext(ctx, "GET",
-		fmt.Sprintf("%s://%s/health", scheme(), dst), nil)
+		fmt.Sprintf("%s://%s/Health", scheme(), server.URL), nil)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return false
@@ -48,16 +55,47 @@ func health(dst string) bool {
 	if resp.StatusCode != http.StatusOK {
 		return false
 	}
+	server.Healthy = true
 	return true
 }
 
-func forward(dst string, rw http.ResponseWriter, r *http.Request) error {
+func FindMinServer() int {
+	minServerIndex := -1
+	minServerConnCnt := -1
+
+	for i, server := range serversPool {
+		if server.Healthy {
+			if minServerIndex == -1 || server.ConnCnt < minServerConnCnt {
+				minServerIndex = i
+				minServerConnCnt = server.ConnCnt
+			}
+		}
+	}
+
+	return minServerIndex
+}
+
+func forward(rw http.ResponseWriter, r *http.Request) error {
 	ctx, _ := context.WithTimeout(r.Context(), timeout)
 	fwdRequest := r.Clone(ctx)
+
+	mutex.Lock()
+	minServerIndex := FindMinServer()
+
+	if minServerIndex == -1 {
+		mutex.Unlock()
+		rw.WriteHeader(http.StatusServiceUnavailable)
+		return fmt.Errorf("all servers are busy")
+	}
+
+	dst := serversPool[minServerIndex]
+	dst.ConnCnt++
+	mutex.Unlock()
+
 	fwdRequest.RequestURI = ""
-	fwdRequest.URL.Host = dst
+	fwdRequest.URL.Host = dst.URL
 	fwdRequest.URL.Scheme = scheme()
-	fwdRequest.Host = dst
+	fwdRequest.Host = dst.URL
 
 	resp, err := http.DefaultClient.Do(fwdRequest)
 	if err == nil {
@@ -67,7 +105,7 @@ func forward(dst string, rw http.ResponseWriter, r *http.Request) error {
 			}
 		}
 		if *traceEnabled {
-			rw.Header().Set("lb-from", dst)
+			rw.Header().Set("lb-from", dst.URL)
 		}
 		log.Println("fwd", resp.StatusCode, resp.Request.URL)
 		rw.WriteHeader(resp.StatusCode)
@@ -78,7 +116,7 @@ func forward(dst string, rw http.ResponseWriter, r *http.Request) error {
 		}
 		return nil
 	} else {
-		log.Printf("Failed to get response from %s: %s", dst, err)
+		log.Printf("Failed to get response from %s: %s", dst.URL, err)
 		rw.WriteHeader(http.StatusServiceUnavailable)
 		return err
 	}
@@ -87,19 +125,20 @@ func forward(dst string, rw http.ResponseWriter, r *http.Request) error {
 func main() {
 	flag.Parse()
 
-	// TODO: Використовуйте дані про стан сервреа, щоб підтримувати список тих серверів, яким можна відправляти ззапит.
 	for _, server := range serversPool {
-		server := server
-		go func() {
+		server.Healthy = Health(server)
+		go func(s *Server) {
 			for range time.Tick(10 * time.Second) {
-				log.Println(server, health(server))
+				mutex.Lock()
+				s.Healthy = Health(s)
+				log.Printf("%s: Health=%t, connCnt=%d", s.URL, s.Healthy, s.ConnCnt)
+				mutex.Unlock()
 			}
-		}()
+		}(server)
 	}
 
 	frontend := httptools.CreateServer(*port, http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
-		// TODO: Рееалізуйте свій алгоритм балансувальника.
-		forward(serversPool[0], rw, r)
+		forward(rw, r)
 	}))
 
 	log.Println("Starting load balancer...")
