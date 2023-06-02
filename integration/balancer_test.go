@@ -6,6 +6,7 @@ import (
 	"os"
 	"testing"
 	"time"
+	. "gopkg.in/check.v1"
 )
 
 const baseAddress = "http://balancer:8090"
@@ -14,19 +15,39 @@ var client = http.Client{
 	Timeout: 3 * time.Second,
 }
 
-func TestBalancer(t *testing.T) {
-	if _, exists := os.LookupEnv("INTEGRATION_TEST"); !exists {
-		t.Skip("Integration test is not enabled")
-	}
+type BalancerIntegrationSuite struct{}
 
-	// TODO: Реалізуйте інтеграційний тест для балансувальникка.
-	resp, err := client.Get(fmt.Sprintf("%s/api/v1/some-data", baseAddress))
-	if err != nil {
-		t.Error(err)
-	}
-	t.Logf("response from [%s]", resp.Header.Get("lb-from"))
+var _ = Suite(&BalancerIntegrationSuite{})
+
+func TestBalancer(t *testing.T) {
+	TestingT(t)
 }
 
-func BenchmarkBalancer(b *testing.B) {
-	// TODO: Реалізуйте інтеграційний бенчмарк для балансувальникка.
+func (s *BalancerIntegrationSuite) Test(c *C) {
+	if _, exists := os.LookupEnv("INTEGRATION_ENV"); !exists {
+		c.Skip("Integration test is not enabled")
+	}
+
+	var serverId int
+	for i := 1; i <= 25; i++ {
+		resp, err := client.Get(fmt.Sprintf("%s/api/v1/some-data", baseAddress))
+		c.Assert(err, IsNil)
+
+		serverId = ((i - 1) % 3) + 1
+		expectedServer := fmt.Sprintf("server%d:8080", serverId)
+		c.Assert(resp.Header.Get("lb-from"), Equals, expectedServer)
+		c.Logf("response from [%s]", resp.Header.Get("lb-from"))
+	}
+}
+
+func (s *BalancerIntegrationSuite) BenchmarkBalancer(c *C) {
+	if _, exists := os.LookupEnv("INTEGRATION_ENV"); !exists {
+		c.Skip("Integration test is not enabled")
+	}
+
+	for i := 0; i < c.N; i++ {
+		response, err := client.Get(fmt.Sprintf("%s/api/v1/some-data", baseAddress))
+		c.Assert(err, IsNil, Commentf("Failed on iteration: %d", i))
+		response.Body.Close()
+	}
 }
