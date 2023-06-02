@@ -73,6 +73,7 @@ func (s *MySuite) TestFindMinServer(c *C) {
 		{URL: "Server3", ConnCnt: 17, Healthy: false},
 	}
 	c.Assert(FindMinServer(), Equals, -1)
+}
 
 func (s *MySuite) TestServerHealth_Healthy(c *C) {
 	mockURL := "http://example.com/Health"
@@ -108,4 +109,47 @@ func (s *MySuite) TestServerHealth_Unhealthy(c *C) {
 	c.Check(unhealthyCheckResult, Equals, false)
 	c.Check(server.Healthy, Equals, false)
 }
+
+func (s *MySuite) TestForward_HealthyServer(c *C) {
+	httpmock.Activate()
+	defer httpmock.DeactivateAndReset()
+
+	httpmock.RegisterResponder("GET", "http://server1:8080/",
+		httpmock.NewStringResponder(200, "OK"))
+
+	serversPool = []*Server{
+		{
+			URL: "server1:8080",
+			Healthy: true,
+		},
+	}
+
+	req, err := http.NewRequest("GET", "/", nil)
+	c.Assert(err, IsNil)
+
+	rr := httptest.NewRecorder()
+	err = forward(rr, req)
+	c.Assert(err, IsNil)
+}
+
+func (s *MySuite) TestForward_UnhealthyServer(c *C) {
+	httpmock.Activate()
+	defer httpmock.DeactivateAndReset()
+
+	httpmock.RegisterResponder("GET", "http://server2:8081/",
+		httpmock.NewStringResponder(500, "Internal Server Error"))
+
+	serversPool = []*Server{
+		{
+			URL: "server2:8081",
+			Healthy: false,
+		},
+	}
+
+	req, err := http.NewRequest("GET", "/", nil)
+	c.Assert(err, IsNil)
+
+	rr := httptest.NewRecorder()
+	err = forward(rr, req)
+	c.Assert(err, NotNil)
 }
