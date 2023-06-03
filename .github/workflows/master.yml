@@ -1,0 +1,32 @@
+name: Run tests
+on:
+  pull_request:
+    branches: [master]
+  push:
+    branches: [master]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      - name: Update packages and module
+        run: |
+          go get -u ./...
+          go mod download
+          go mod tidy
+
+      - name: Run unit test
+        run: go test ./cmd/lb/balancer_test.go ./cmd/lb/balancer.go
+
+      - name: Build Go
+        run: go build ./cmd/stats/main.go
+
+      - name: Build Docker image
+        run: docker build -t app .
+
+      - name: Run integration test
+        run: docker-compose -f docker-compose.yaml -f docker-compose.test.yaml up --exit-code-from test
