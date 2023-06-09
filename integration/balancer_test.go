@@ -1,6 +1,7 @@
 package integration
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
@@ -23,6 +24,11 @@ func TestBalancer(t *testing.T) {
 	TestingT(t)
 }
 
+type ResponseBody struct {
+	Key   string `json:"key"`
+	Value string `json:"value"`
+}
+
 func (s *BalancerIntegrationSuite) Test(c *C) {
 	if _, exists := os.LookupEnv("INTEGRATION_ENV"); !exists {
 		c.Skip("Integration test is not enabled")
@@ -37,6 +43,28 @@ func (s *BalancerIntegrationSuite) Test(c *C) {
 		expectedServer := fmt.Sprintf("server%d:8080", serverId)
 		c.Assert(resp.Header.Get("lb-from"), Equals, expectedServer)
 		c.Logf("response from [%s]", resp.Header.Get("lb-from"))
+	}
+
+	apiURL := fmt.Sprintf("%s/api/v1/some-data?key=code-quartet", baseAddress)
+	dbResponse, error := client.Get(apiURL)
+
+	if error != nil {
+		c.Error(error)
+		return
+	}
+
+	var responseData ResponseBody
+	decodeError := json.NewDecoder(dbResponse.Body).Decode(&responseData)
+
+	if decodeError != nil {
+		c.Error(decodeError)
+		return
+	}
+
+	c.Check(responseData.Key, Equals, "code-quartet")
+
+	if responseData.Value == "" {
+		c.Error(decodeError)
 	}
 }
 
