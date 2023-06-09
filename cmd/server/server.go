@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"strconv"
@@ -61,10 +62,6 @@ func main() {
 				rw.WriteHeader(resp.StatusCode)
 				return
 			}
-			respDelayString := os.Getenv(confResponseDelaySec)
-			if delaySec, parseErr := strconv.Atoi(respDelayString); parseErr == nil && delaySec > 0 && delaySec < 300 {
-				time.Sleep(time.Duration(delaySec) * time.Second)
-			}
 
 			report.Process(r)
 
@@ -76,7 +73,7 @@ func main() {
 			_ = json.NewEncoder(rw).Encode(body)
 
 			defer resp.Body.Close()
-		} else {
+		} 
 			respDelayString := os.Getenv(confResponseDelaySec)
 			if delaySec, parseErr := strconv.Atoi(respDelayString); parseErr == nil && delaySec > 0 && delaySec < 300 {
 				time.Sleep(time.Duration(delaySec) * time.Second)
@@ -102,8 +99,6 @@ func main() {
 
 				_ = json.NewEncoder(rw).Encode(responseData)
 			}
-		}
-
 	})
 
 	h.Handle("/report", report)
@@ -115,7 +110,10 @@ func main() {
 	body := ReqBody{Value: time.Now().Format(time.RFC3339)}
 	json.NewEncoder(buff).Encode(body)
 
-	res, _ := client.Post(fmt.Sprintf("%s/test", dbUrl), "application/json", buff)
+	res, err := client.Post(fmt.Sprintf("%s/code-quartet", dbUrl), "application/json", buff)
+	if err != nil {
+		log.Fatal(err)
+	}
 	defer res.Body.Close()
 
 	signal.WaitForTerminationSignal()
