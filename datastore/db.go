@@ -114,6 +114,7 @@ func (db *Db) createSegment() error {
 	db.out = f
 	db.outOffset = 0
 	db.segments = append(db.segments, newSegment)
+	db.outPath = filePath
 
 	if len(db.segments) >= 3 {
 		go db.compactOldSegments()
