@@ -1,16 +1,28 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"strconv"
 
+	"github.com/yaryna-bashchak/kpi-architecture-lab-4/datastore"
 	"github.com/yaryna-bashchak/kpi-architecture-lab-4/httptools"
 	"github.com/yaryna-bashchak/kpi-architecture-lab-4/signal"
 )
 
 var port = flag.Int("port", 8083, "server port")
+
+type RespBody struct {
+	Key   string `json:"key"`
+	Value string `json:"value"`
+}
+
+type ReqBody struct {
+	Value string `json:"value"`
+}
 
 type server struct {
 	*http.ServeMux
@@ -20,7 +32,19 @@ func main() {
 	flag.Parse()
 
 	s := &server{ServeMux: http.NewServeMux()}
-	s.HandleFunc("/db/", handleDBRequest)
+	dir, err := ioutil.TempDir("", "temp-dir")
+	if err != nil {
+		log.Fatal(err)
+	}
+	db, err := datastore.NewDb(dir, 250)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer db.Close()
+
+	s.HandleFunc("/db/", func(rw http.ResponseWriter, req *http.Request) {
+		handleDBRequest(rw, req, db)
+	})
 
 	httpServer := httptools.CreateServer(*port, s)
 	httpServer.Start()
@@ -36,19 +60,40 @@ func (s *server) Start() {
 	}
 }
 
-func handleDBRequest(res http.ResponseWriter, req *http.Request) {
+func handleDBRequest(rw http.ResponseWriter, req *http.Request, Db *datastore.Db) {
 	log.Println("Caught request")
 	key := req.URL.Path[len("/db/"):]
 	log.Printf("Key: %s", key)
 
 	switch req.Method {
 	case http.MethodGet:
-		log.Println("Caught GET request")
-		res.WriteHeader(http.StatusOK)
+		value, err := Db.Get(key)
+		if err != nil {
+			rw.WriteHeader(http.StatusNotFound)
+			return
+		}
+		rw.WriteHeader(http.StatusOK)
+		rw.Header().Set("content-type", "application/json")
+		_ = json.NewEncoder(rw).Encode(RespBody{
+			Key:   key,
+			Value: value,
+		})
 	case http.MethodPost:
-		log.Println("Caught POST request")
-		res.WriteHeader(http.StatusCreated)
+		var body ReqBody
+
+		err := json.NewDecoder(req.Body).Decode(&body)
+		if err != nil {
+			rw.WriteHeader(http.StatusBadRequest)
+			return
+		}
+
+		err = Db.Put(key, body.Value)
+		if err != nil {
+			rw.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		rw.WriteHeader(http.StatusCreated)
 	default:
-		res.WriteHeader(http.StatusBadRequest)
+		rw.WriteHeader(http.StatusBadRequest)
 	}
 }
