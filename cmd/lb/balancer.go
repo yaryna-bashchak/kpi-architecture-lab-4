@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math"
 	"net/http"
+	"sync/atomic"
 	"time"
-	"sync"
+
 	"github.com/yaryna-bashchak/kpi-architecture-lab-4/httptools"
 	"github.com/yaryna-bashchak/kpi-architecture-lab-4/signal"
 )
@@ -23,8 +25,8 @@ var (
 
 type Server struct {
 	URL     string
-	ConnCnt int
-	Healthy bool
+	ConnCnt int32
+	Healthy int32
 }
 
 var (
@@ -34,7 +36,6 @@ var (
 		{URL: "server2:8080"},
 		{URL: "server3:8080"},
 	}
-	mutex sync.Mutex
 )
 
 func scheme() string {
@@ -50,24 +51,26 @@ func Health(server *Server) bool {
 		fmt.Sprintf("%s://%s/Health", scheme(), server.URL), nil)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
+		atomic.StoreInt32(&server.Healthy, 0)
 		return false
 	}
 	if resp.StatusCode != http.StatusOK {
+		atomic.StoreInt32(&server.Healthy, 0)
 		return false
 	}
-	server.Healthy = true
+	atomic.StoreInt32(&server.Healthy, 1)
 	return true
 }
 
 func FindMinServer() int {
 	minServerIndex := -1
-	minServerConnCnt := -1
+	minServerConnCnt := int32(math.MaxInt32)
 
 	for i, server := range serversPool {
-		if server.Healthy {
-			if minServerIndex == -1 || server.ConnCnt < minServerConnCnt {
+		if atomic.LoadInt32(&server.Healthy) == 1 {
+			if minServerIndex == -1 || atomic.LoadInt32(&server.ConnCnt) < minServerConnCnt {
 				minServerIndex = i
-				minServerConnCnt = server.ConnCnt
+				minServerConnCnt = atomic.LoadInt32(&server.ConnCnt)
 			}
 		}
 	}
@@ -79,18 +82,15 @@ func forward(rw http.ResponseWriter, r *http.Request) error {
 	ctx, _ := context.WithTimeout(r.Context(), timeout)
 	fwdRequest := r.Clone(ctx)
 
-	mutex.Lock()
 	minServerIndex := FindMinServer()
 
 	if minServerIndex == -1 {
-		mutex.Unlock()
 		rw.WriteHeader(http.StatusServiceUnavailable)
 		return fmt.Errorf("all servers are busy")
 	}
 
 	dst := serversPool[minServerIndex]
-	dst.ConnCnt++
-	mutex.Unlock()
+	atomic.AddInt32(&dst.ConnCnt, 1)
 
 	fwdRequest.RequestURI = ""
 	fwdRequest.URL.Host = dst.URL
@@ -126,13 +126,11 @@ func main() {
 	flag.Parse()
 
 	for _, server := range serversPool {
-		server.Healthy = Health(server)
+		Health(server)
 		go func(s *Server) {
 			for range time.Tick(10 * time.Second) {
-				mutex.Lock()
-				s.Healthy = Health(s)
-				log.Printf("%s: Health=%t, connCnt=%d", s.URL, s.Healthy, s.ConnCnt)
-				mutex.Unlock()
+				Health(s)
+				log.Printf("%s: Health=%t, connCnt=%d", s.URL, atomic.LoadInt32(&s.Healthy) == 1, atomic.LoadInt32(&s.ConnCnt))
 			}
 		}(server)
 	}
