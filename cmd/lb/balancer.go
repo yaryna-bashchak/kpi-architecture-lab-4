@@ -1,12 +1,12 @@
 package main
 
 import (
+	"container/heap"
 	"context"
 	"flag"
 	"fmt"
 	"io"
 	"log"
-	"math"
 	"net/http"
 	"sync/atomic"
 	"time"
@@ -38,6 +38,29 @@ var (
 	}
 )
 
+type ServerPool []*Server
+
+func (p ServerPool) Len() int { return len(p) }
+func (p ServerPool) Less(i, j int) bool {
+	return atomic.LoadInt32(&p[i].ConnCnt) < atomic.LoadInt32(&p[j].ConnCnt)
+}
+
+func (p ServerPool) Swap(i, j int) {
+	p[i], p[j] = p[j], p[i]
+}
+
+func (p *ServerPool) Push(x interface{}) {
+	*p = append(*p, x.(*Server))
+}
+
+func (p *ServerPool) Pop() interface{} {
+	old := *p
+	n := len(old)
+	item := old[n-1]
+	*p = old[0 : n-1]
+	return item
+}
+
 func scheme() string {
 	if *https {
 		return "https"
@@ -62,34 +85,38 @@ func Health(server *Server) bool {
 	return true
 }
 
-func FindMinServer() int {
-	minServerIndex := -1
-	minServerConnCnt := int32(math.MaxInt32)
+func FindMinServer() *Server {
+	serversCopy := make([]*Server, len(serversPool))
+	copy(serversCopy, serversPool)
 
-	for i, server := range serversPool {
+	var minServer *Server
+	serverHeap := ServerPool(serversCopy)
+	heap.Init(&serverHeap)
+
+	for serverHeap.Len() > 0 {
+		server := heap.Pop(&serverHeap).(*Server)
+
 		if atomic.LoadInt32(&server.Healthy) == 1 {
-			if minServerIndex == -1 || atomic.LoadInt32(&server.ConnCnt) < minServerConnCnt {
-				minServerIndex = i
-				minServerConnCnt = atomic.LoadInt32(&server.ConnCnt)
-			}
+			minServer = server
+			break
 		}
 	}
 
-	return minServerIndex
+	return minServer
 }
 
 func forward(rw http.ResponseWriter, r *http.Request) error {
 	ctx, _ := context.WithTimeout(r.Context(), timeout)
 	fwdRequest := r.Clone(ctx)
 
-	minServerIndex := FindMinServer()
+	minServer := FindMinServer()
 
-	if minServerIndex == -1 {
+	if minServer == (*Server)(nil) {
 		rw.WriteHeader(http.StatusServiceUnavailable)
 		return fmt.Errorf("all servers are busy")
 	}
 
-	dst := serversPool[minServerIndex]
+	dst := minServer
 	atomic.AddInt32(&dst.ConnCnt, 1)
 	defer atomic.AddInt32(&dst.ConnCnt, -1)
 
@@ -125,6 +152,9 @@ func forward(rw http.ResponseWriter, r *http.Request) error {
 
 func main() {
 	flag.Parse()
+
+	var serverHeap = &ServerPool{}
+	heap.Init(serverHeap)
 
 	for _, server := range serversPool {
 		Health(server)
