@@ -37,42 +37,42 @@ func (s *MySuite) TestScheme(c *C) {
 }
 
 func (s *MySuite) TestFindMinServer(c *C) {
-	c.Assert(FindMinServer(), Equals, -1)
+	c.Assert(FindMinServer(), Equals, (*Server)(nil))
 
 	serversPool = []*Server{
 		{URL: "Server1", ConnCnt: 22, Healthy: 1},
 		{URL: "Server2", ConnCnt: 17, Healthy: 1},
 		{URL: "Server3", ConnCnt: 35, Healthy: 1},
 	}
-	c.Assert(FindMinServer(), Equals, 1)
+	c.Assert(FindMinServer(), Equals, serversPool[1])
 	
 	serversPool = []*Server{
 		{URL: "Server1", ConnCnt: 10, Healthy: 1},
 		{URL: "Server2", ConnCnt: 10, Healthy: 1},
 		{URL: "Server3", ConnCnt: 10, Healthy: 1},
 	}
-	c.Assert(FindMinServer(), Equals, 0)
+	c.Assert(FindMinServer(), Equals, serversPool[0])
 
 	serversPool = []*Server{
 		{URL: "Server1", ConnCnt: 1, Healthy: 0},
 		{URL: "Server2", ConnCnt: 15, Healthy: 1},
 		{URL: "Server3", ConnCnt: 12, Healthy: 1},
 	}
-	c.Assert(FindMinServer(), Equals, 2)
+	c.Assert(FindMinServer(), Equals, serversPool[2])
 
 	serversPool = []*Server{
 		{URL: "Server1", ConnCnt: 0, Healthy: 0},
 		{URL: "Server2", ConnCnt: 10, Healthy: 1},
 		{URL: "Server3", ConnCnt: 0, Healthy: 0},
 	}
-	c.Assert(FindMinServer(), Equals, 1)
+	c.Assert(FindMinServer(), Equals, serversPool[1])
 
 	serversPool = []*Server{
 		{URL: "Server1", ConnCnt: 15, Healthy: 0},
 		{URL: "Server2", ConnCnt: 12, Healthy: 0},
 		{URL: "Server3", ConnCnt: 17, Healthy: 0},
 	}
-	c.Assert(FindMinServer(), Equals, -1)
+	c.Assert(FindMinServer(), Equals, (*Server)(nil))
 }
 
 func (s *MySuite) TestServerHealth_Healthy(c *C) {
