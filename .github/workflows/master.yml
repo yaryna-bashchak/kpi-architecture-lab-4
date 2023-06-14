@@ -20,7 +20,10 @@ jobs:
           go mod tidy
 
       - name: Run unit test
-        run: go test ./cmd/lb/balancer_test.go ./cmd/lb/balancer.go
+        run: |
+          go test ./cmd/lb/balancer_test.go ./cmd/lb/balancer.go 
+          go test ./datastore/entry_test.go ./datastore/entry.go
+          go test ./datastore/db_test.go ./datastore/db.go ./datastore/entry.go
 
       - name: Build Go
         run: go build ./cmd/stats/main.go
