@@ -91,6 +91,7 @@ func forward(rw http.ResponseWriter, r *http.Request) error {
 
 	dst := serversPool[minServerIndex]
 	atomic.AddInt32(&dst.ConnCnt, 1)
+	defer atomic.AddInt32(&dst.ConnCnt, -1)
 
 	fwdRequest.RequestURI = ""
 	fwdRequest.URL.Host = dst.URL
