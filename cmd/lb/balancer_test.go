@@ -40,37 +40,37 @@ func (s *MySuite) TestFindMinServer(c *C) {
 	c.Assert(FindMinServer(), Equals, -1)
 
 	serversPool = []*Server{
-		{URL: "Server1", ConnCnt: 22, Healthy: true},
-		{URL: "Server2", ConnCnt: 17, Healthy: true},
-		{URL: "Server3", ConnCnt: 35, Healthy: true},
+		{URL: "Server1", ConnCnt: 22, Healthy: 1},
+		{URL: "Server2", ConnCnt: 17, Healthy: 1},
+		{URL: "Server3", ConnCnt: 35, Healthy: 1},
 	}
 	c.Assert(FindMinServer(), Equals, 1)
 	
 	serversPool = []*Server{
-		{URL: "Server1", ConnCnt: 10, Healthy: true},
-		{URL: "Server2", ConnCnt: 10, Healthy: true},
-		{URL: "Server3", ConnCnt: 10, Healthy: true},
+		{URL: "Server1", ConnCnt: 10, Healthy: 1},
+		{URL: "Server2", ConnCnt: 10, Healthy: 1},
+		{URL: "Server3", ConnCnt: 10, Healthy: 1},
 	}
 	c.Assert(FindMinServer(), Equals, 0)
 
 	serversPool = []*Server{
-		{URL: "Server1", ConnCnt: 1, Healthy: false},
-		{URL: "Server2", ConnCnt: 15, Healthy: true},
-		{URL: "Server3", ConnCnt: 12, Healthy: true},
+		{URL: "Server1", ConnCnt: 1, Healthy: 0},
+		{URL: "Server2", ConnCnt: 15, Healthy: 1},
+		{URL: "Server3", ConnCnt: 12, Healthy: 1},
 	}
 	c.Assert(FindMinServer(), Equals, 2)
 
 	serversPool = []*Server{
-		{URL: "Server1", ConnCnt: 0, Healthy: false},
-		{URL: "Server2", ConnCnt: 10, Healthy: true},
-		{URL: "Server3", ConnCnt: 0, Healthy: false},
+		{URL: "Server1", ConnCnt: 0, Healthy: 0},
+		{URL: "Server2", ConnCnt: 10, Healthy: 1},
+		{URL: "Server3", ConnCnt: 0, Healthy: 0},
 	}
 	c.Assert(FindMinServer(), Equals, 1)
 
 	serversPool = []*Server{
-		{URL: "Server1", ConnCnt: 15, Healthy: false},
-		{URL: "Server2", ConnCnt: 12, Healthy: false},
-		{URL: "Server3", ConnCnt: 17, Healthy: false},
+		{URL: "Server1", ConnCnt: 15, Healthy: 0},
+		{URL: "Server2", ConnCnt: 12, Healthy: 0},
+		{URL: "Server3", ConnCnt: 17, Healthy: 0},
 	}
 	c.Assert(FindMinServer(), Equals, -1)
 }
@@ -89,7 +89,7 @@ func (s *MySuite) TestServerHealth_Healthy(c *C) {
 	
 	healthyCheckResult := Health(server)
 	c.Check(healthyCheckResult, Equals, true)
-	c.Check(server.Healthy, Equals, true)
+	c.Check(server.Healthy, Equals, int32(1))
 }
 
 func (s *MySuite) TestServerHealth_Unhealthy(c *C) {
@@ -100,14 +100,14 @@ func (s *MySuite) TestServerHealth_Unhealthy(c *C) {
 
 	server := &Server{
 		URL: "example.com",
-		Healthy: false,
+		Healthy: 0,
 	}
 
 	httpmock.RegisterResponder(http.MethodGet, mockURL, httpmock.NewStringResponder(http.StatusInternalServerError, ""))
 
 	unhealthyCheckResult := Health(server)
 	c.Check(unhealthyCheckResult, Equals, false)
-	c.Check(server.Healthy, Equals, false)
+	c.Check(server.Healthy, Equals, int32(0))
 }
 
 func (s *MySuite) TestForward_HealthyServer(c *C) {
@@ -120,7 +120,7 @@ func (s *MySuite) TestForward_HealthyServer(c *C) {
 	serversPool = []*Server{
 		{
 			URL: "server1:8080",
-			Healthy: true,
+			Healthy: 1,
 		},
 	}
 
@@ -142,7 +142,7 @@ func (s *MySuite) TestForward_UnhealthyServer(c *C) {
 	serversPool = []*Server{
 		{
 			URL: "server2:8081",
-			Healthy: false,
+			Healthy: 0,
 		},
 	}
 
