@@ -192,32 +192,41 @@ func checkKeyInSegments(segments []*Segment, key string) bool {
 }
 
 func (db *Db) recover() error {
-	var err error
-	var buf [bufSize]byte
-
-	in := bufio.NewReaderSize(db.out, bufSize)
-
-	for err == nil {
-		header, err := in.Peek(bufSize)
-		if err == io.EOF {
-			if len(header) == 0 {
-				return err
-			}
-		} else if err != nil {
+	for _, segment := range db.segments {
+		file, err := os.Open(segment.filePath)
+		if err != nil {
 			return err
 		}
+		defer file.Close()
 
-		size := binary.LittleEndian.Uint32(header)
-		var data []byte
+		var buf [bufSize]byte
+		in := bufio.NewReaderSize(file, bufSize)
 
-		if size < bufSize {
-			data = buf[:size]
-		} else {
-			data = make([]byte, size)
-		}
+		for err == nil {
+			header, err := in.Peek(bufSize)
+			if err == io.EOF {
+				if len(header) == 0 {
+					return err
+				}
+			} else if err != nil {
+				return err
+			}
 
-		n, err := in.Read(data)
-		if err == nil {
+			size := binary.LittleEndian.Uint32(header)
+			var data []byte
+
+			if size < bufSize {
+				data = buf[:size]
+			} else {
+				data = make([]byte, size)
+			}
+
+			n, err := in.Read(data)
+
+			if err != nil {
+				return err
+			}
+
 			if n != int(size) {
 				return fmt.Errorf("corrupted file")
 			}
@@ -227,8 +236,7 @@ func (db *Db) recover() error {
 			db.setKey(e.key, int64(n))
 		}
 	}
-
-	return err
+	return nil
 }
 
 func (db *Db) Close() error {
