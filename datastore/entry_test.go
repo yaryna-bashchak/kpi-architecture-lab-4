@@ -3,6 +3,7 @@ package datastore
 import (
 	"bufio"
 	"bytes"
+	"crypto/sha1"
 	"testing"
 )
 
@@ -26,5 +27,21 @@ func TestReadValue(t *testing.T) {
 	}
 	if v != "test-value" {
 		t.Errorf("Got bat value [%s]", v)
+	}
+}
+
+func TestCheckHashSum(t *testing.T) {
+	e := entry{"key", "test-value", nil, make(chan error)}
+
+	sumLength := len(e.key) + len(e.value) + 12
+	sumData := e.Encode()[:sumLength]
+	expectedSum := sha1.Sum(sumData)
+
+	data := e.Encode()
+	newEntry := entry{}
+	newEntry.Decode(data)
+
+	if bytes.Compare(newEntry.sum, expectedSum[:]) != 0 {
+		t.Errorf("Check hash sum. Expected: %v, Got: %v", expectedSum, newEntry.sum)
 	}
 }
