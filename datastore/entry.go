@@ -13,6 +13,7 @@ type entry struct {
 	key   string
 	value string
 	sum   []byte
+	done   chan error
 }
 
 func getLength(key, value string) int64 {

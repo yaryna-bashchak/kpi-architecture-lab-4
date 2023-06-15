@@ -29,7 +29,6 @@ type Db struct {
 	indexOps         chan IndexOp
 	keyPositions     chan *KeyPosition
 	putOps           chan entry
-	putDone          chan error
 
 	index    hashIndex
 	segments []*Segment
@@ -61,7 +60,6 @@ func NewDb(dir string, segmentSize int64) (*Db, error) {
 		indexOps:     make(chan IndexOp),
 		keyPositions: make(chan *KeyPosition),
 		putOps:       make(chan entry),
-		putDone:      make(chan error),
 	}
 
 	err := db.createSegment()
@@ -240,6 +238,7 @@ func (db *Db) Close() error {
 func (db *Db) setKey(key string, n int64) {
 	db.getLastSegment().mu.Lock()
 	defer db.getLastSegment().mu.Unlock()
+
 	db.getLastSegment().index[key] = db.outOffset
 	db.outOffset += n
 }
@@ -283,13 +282,13 @@ func (db *Db) startPutRoutine() {
 
 			stat, err := db.out.Stat()
 			if err != nil {
-				db.putDone <- err
+				entry.done <- err
 				continue
 			}
 
 			if stat.Size()+length > db.segmentSize {
 				if err := db.createSegment(); err != nil {
-					db.putDone <- err
+					entry.done <- err
 					continue
 				}
 			}
@@ -302,18 +301,20 @@ func (db *Db) startPutRoutine() {
 					index:   int64(n),
 				}
 			}
-			db.putDone <- nil
+			entry.done <- nil
 		}
 	}()
 }
 
 func (db *Db) Put(key, value string) error {
+	done := make(chan error)
 	entry := entry{
 		key:   key,
 		value: value,
+		done: done,
 	}
 	db.putOps <- entry
-	return <-db.putDone
+	return <-done
 }
 
 func (s *Segment) getFromSegment(position int64) (string, error) {
