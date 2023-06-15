@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sync"
 )
 
 const (
@@ -38,6 +39,7 @@ type Segment struct {
 	outOffset int64
 	index     hashIndex
 	filePath  string
+	mu sync.Mutex
 }
 
 type IndexOp struct {
@@ -155,6 +157,7 @@ func (db *Db) compactOldSegments() {
 	lastSegmentIndex := len(db.segments) - 2
 	for i := 0; i <= lastSegmentIndex; i++ {
 		s := db.segments[i]
+		s.mu.Lock()
 		for key, index := range s.index {
 			if i < lastSegmentIndex && checkKeyInSegments(db.segments[i+1:lastSegmentIndex+1], key) {
 				continue
@@ -172,6 +175,7 @@ func (db *Db) compactOldSegments() {
 				offset += int64(n)
 			}
 		}
+		s.mu.Unlock()
 	}
 
 	db.segments = []*Segment{newSegment, db.getLastSegment()}
@@ -179,9 +183,12 @@ func (db *Db) compactOldSegments() {
 
 func checkKeyInSegments(segments []*Segment, key string) bool {
 	for _, s := range segments {
+		s.mu.Lock()
 		if _, ok := s.index[key]; ok {
+			s.mu.Unlock()
 			return true
 		}
+		s.mu.Unlock()
 	}
 	return false
 }
@@ -231,6 +238,8 @@ func (db *Db) Close() error {
 }
 
 func (db *Db) setKey(key string, n int64) {
+	db.getLastSegment().mu.Lock()
+	defer db.getLastSegment().mu.Unlock()
 	db.getLastSegment().index[key] = db.outOffset
 	db.outOffset += n
 }
@@ -238,10 +247,13 @@ func (db *Db) setKey(key string, n int64) {
 func (db *Db) getSegmentAndPosition(key string) (*Segment, int64, error) {
 	for i := range db.segments {
 		s := db.segments[len(db.segments)-i-1]
+		s.mu.Lock()
 		pos, ok := s.index[key]
 		if ok {
+			s.mu.Unlock()
 			return s, pos, nil
 		}
+		s.mu.Unlock()
 	}
 
 	return nil, 0, ErrNotFound
